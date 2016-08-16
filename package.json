@@ -21,10 +21,10 @@
   },
   "homepage": "https://github.com/andysturrock/hubot-msgc#readme",
   "dependencies": {
-    "parent-require": "^1.0.0"
+    "hubot": ">=2.0",
+    "ws": "0.7.0"
   },
   "peerDependencies": {
-    "hubot": ">=2.0"
   },
   "devDependencies": {
     "coffee-script": ">=1.2.0"
