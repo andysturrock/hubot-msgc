@@ -1,5 +1,3 @@
-{Robot, Adapter, TextMessage, EnterMessage, LeaveMessage, CatchAllMessage} = require "hubot"
-
 class Msgc extends Adapter
 
   constructor: ->
