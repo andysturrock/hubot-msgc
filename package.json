@@ -1,0 +1,32 @@
+{
+  "name": "hubot-msgc",
+  "version": "1.0.0",
+  "description": "Microsoft GroupChat adapter for Hubot",
+  "main": "./src/msgc.coffee",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/andysturrock/hubot-msgc.git"
+  },
+  "keywords": [
+    "hubot",
+    "groupchat"
+  ],
+  "author": "Andy Sturrock",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/andysturrock/hubot-msgc/issues"
+  },
+  "homepage": "https://github.com/andysturrock/hubot-msgc#readme",
+  "dependencies": {
+    "parent-require": "^1.0.0"
+  },
+  "peerDependencies": {
+    "hubot": ">=2.0"
+  },
+  "devDependencies": {
+    "coffee-script": ">=1.2.0"
+  }
+}
