@@ -12,11 +12,12 @@ class MicrosoftGroupChatAdapter extends Adapter
 
   constructor: (robot) ->
     super robot
-    @robot.logger.info "Constructed!"
 
   send: (envelope, strings...) ->
     console.log("**** send ****")
-    @robot.logger.info("**** send ****")
+    console.log(envelope)
+    console.log(strings)
+    console.log("**** send ****")
     @wss.clients.forEach (client) =>
       client.send(JSON.stringify(strings))
 
@@ -27,22 +28,26 @@ class MicrosoftGroupChatAdapter extends Adapter
 
   reply: (envelope, strings...) ->
     console.log("**** reply ****")
-    @robot.logger.info("**** reply ****")
+    console.log(envelope)
+    console.log(strings)
+    console.log("**** reply ****")
     strings = strings.map (s) -> "#{envelope.user.name}: #{s}"
     @send envelope, strings...
 
-  on_message: (e) =>
-    console.log("**** on_message ****")
-    @robot.logger.info("**** on_message #{e} ****")
-    e = JSON.parse e
-    @robot.logger.info("**** on_message now e = #{e} ****")
-    @robot.logger.info("**** on_message now e.message = #{e.message} ****")
-    user = @robot.brain.userForId(e.user, {name: e.user, room: e.room})
-    @receive new TextMessage(user, e.message, 'messageId')
+  _on_text_message: (user, text) =>
+    @robot.logger.debug("Received text message from #{user.name} => #{text}")
+    @receive new TextMessage(user, text)
+
+  on_message: (message) =>
+    @robot.logger.debug("Received message #{message}")
+    message = JSON.parse message
+    user = @robot.brain.userForId(message.username)
+    switch message.type
+        when "text" then @_on_text_message(user, message.text)
+        else @robot.logger.error("Unexpected message type #{message.type}")
 
   on_heartbeat: (e) =>
-    console.log("**** on_heartbeat ****")
-    @robot.logger.info("**** on_heartbeat ****")
+    @robot.logger.debug("heartbeat")
 
   run: ->
     # Hack robot to inject proxy settings
@@ -51,13 +56,11 @@ class MicrosoftGroupChatAdapter extends Adapter
 
     @wss = new WebSocketServer {port: 4773}
     @wss.on 'connection', (ws) =>
-      console.log("**** connected ****")
-      @robot.logger.info("**** connected ****")
+      @robot.logger.info("Websocket connection opened")
       ws.on 'message', @on_message
       ws.on 'heartbeat', @on_heartbeat
 
-    console.log("**** Woohoo ****")
-    @robot.logger.info("**** Woohoo ****")
+    @robot.logger.info("Connected to hubot")
     @emit "connected"
 
 exports.use = (robot) ->
