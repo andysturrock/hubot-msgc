@@ -15,7 +15,8 @@ namespace Hubot_MSGroupChatAdapter
 {
     internal class Program
     {
-        private static readonly string serverURI = @"http://192.168.10.12:4773/";
+        //private static readonly string serverURI = @"http://192.168.10.12:4773/";
+        private static readonly string serverURI = @"http://172.31.40.209:4773";
 
         public static void Main2(string[] args)
         {
