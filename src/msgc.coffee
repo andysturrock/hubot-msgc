@@ -14,40 +14,50 @@ class MicrosoftGroupChatAdapter extends Adapter
     super robot
 
   send: (envelope, strings...) ->
-    console.log("**** send ****")
-    console.log(envelope)
-    console.log(strings)
-    console.log("**** send ****")
+    @robot.logger.debug("send")
+
+    out = ""
+    out = ("#{str}\n" for str in strings)
+    textMessage = {
+      "type": "text",
+      "id": envelope.message.id,
+      "username": envelope.user.id,
+      "room": envelope.room,
+      "text": out.join('')
+    }
+    console.log("textMessage:")
+    console.log(textMessage)
+    console.log("End textMessage")
+    json = JSON.stringify(textMessage)
+
+    console.log("json:")
+    console.log(json)
+    console.log("end json")
+
     @wss.clients.forEach (client) =>
-      client.send(JSON.stringify(strings))
+      console.log("Sending #{json}")
+      client.send(json)
 
   emote: (envelope, strings...) ->
-    console.log("**** emote ****")
-    @robot.logger.info("**** emote ****")
-    @send envelope, "* #{str}" for str in strings
+    @robot.logger.debug("emote")
+    @send envelope, strings
 
   reply: (envelope, strings...) ->
-    console.log("**** reply ****")
-    console.log(envelope)
-    console.log(strings)
-    console.log("**** reply ****")
-    strings = strings.map (s) -> "#{envelope.user.name}: #{s}"
-    @send envelope, strings...
+    @robot.logger.debug("reply")
+    @send envelope, strings
 
-  _on_text_message: (user, text) =>
-    @robot.logger.debug("Received text message from #{user.name} => #{text}")
-    @receive new TextMessage(user, text)
+  _onTextMessage: (user, id, text) =>
+    @robot.logger.debug("Received text message id #{id} from #{user.name} => #{text}")
+    @receive new TextMessage(user, text, id)
 
-  on_message: (message) =>
+  onMessage: (message) =>
     @robot.logger.debug("Received message #{message}")
     message = JSON.parse message
     user = @robot.brain.userForId(message.username)
+    user.room = message.room
     switch message.type
-        when "text" then @_on_text_message(user, message.text)
+        when "text" then @_onTextMessage(user, message.id, message.text)
         else @robot.logger.error("Unexpected message type #{message.type}")
-
-  on_heartbeat: (e) =>
-    @robot.logger.debug("heartbeat")
 
   run: ->
     # Hack robot to inject proxy settings
@@ -57,8 +67,7 @@ class MicrosoftGroupChatAdapter extends Adapter
     @wss = new WebSocketServer {port: 4773}
     @wss.on 'connection', (ws) =>
       @robot.logger.info("Websocket connection opened")
-      ws.on 'message', @on_message
-      ws.on 'heartbeat', @on_heartbeat
+      ws.on 'message', @onMessage
 
     @robot.logger.info("Connected to hubot")
     @emit "connected"
