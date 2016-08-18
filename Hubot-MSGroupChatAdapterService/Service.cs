@@ -1,4 +1,5 @@
 ﻿using System;
+using System.ComponentModel;
 using System.Configuration;
 using System.Diagnostics;
 using System.Net.WebSockets;
@@ -13,7 +14,7 @@ using Newtonsoft.Json;
 
 namespace Hubot_MSGroupChatAdapterService
 {
-    public partial class Service : ServiceBase
+    public partial class Hubot_MSGroupChatAdapterService : ServiceBase
     {
         private readonly string _hubotUri;
         private readonly string _userSipUri;
@@ -28,57 +29,99 @@ namespace Hubot_MSGroupChatAdapterService
         private GroupChatEndpoint _groupChatEndpoint;
         private UserEndpoint _userEndpoint;
         private ClientWebSocket _clientWebSocket;
-        private readonly EventLog _eventLog = new EventLog();
+        private readonly EventLog _eventLog;
 
-        public Service(string hubotUri)
+        public Hubot_MSGroupChatAdapterService(string hubotUri)
         {
             if (string.IsNullOrEmpty(hubotUri))
                 throw new ArgumentException("Value cannot be null or empty.", nameof(hubotUri));
             _hubotUri = hubotUri;
+
+            InitializeComponent();
+
+            _eventLog = new EventLog("Hubot_MSGroupChatAdapterService");
+            ((ISupportInitialize)(_eventLog)).BeginInit();
+            if (!EventLog.SourceExists("Hubot_MSGroupChatAdapterService"))
+            {
+                EventLog.CreateEventSource("Hubot_MSGroupChatAdapterService", "Hubot_MSGroupChatAdapterService");
+            }
+            _eventLog.Source = "Hubot_MSGroupChatAdapterService";
+            _eventLog.Log = "";  // Automatically matches log to source
+            ((ISupportInitialize)(_eventLog)).EndInit();
+
             _userSipUri = ConfigurationManager.AppSettings["UserSipUri"];
             _ocsServer = ConfigurationManager.AppSettings["OcsServer"];
             _ocsUsername = ConfigurationManager.AppSettings["OcsUsername"];
-            _ocsPassword =
-                Registry.GetValue(@"HKEY_CURRENT_USER\hubot-msgc", "password", "default").ToString();
+            // If we can't find the password in the registry, set to "default" and fail later.
+            var password = Registry.GetValue(@"HKEY_LOCAL_MACHINE\SOFTWARE\hubot-msgc", "password", "default");
+            _ocsPassword = password?.ToString() ?? "default";
+            if (_ocsPassword.Equals("default"))
+            {
+                _eventLog.WriteEntry(@"Failed to find password key in HKEY_LOCAL_MACHINE\SOFTWARE\hubot-msg");
+            }
             _lookupServerUri = new Uri(ConfigurationManager.AppSettings["LookupServerUri"]);
             _chatRoomName = ConfigurationManager.AppSettings["ChatRoomName"];
             _botName = ConfigurationManager.AppSettings["BotName"];
 
-            _eventLog.Source = ServiceName;
-            _eventLog.Log = "Application";
-
-            InitializeComponent();
         }
 
         protected override void OnStart(string[] args)
         {
-            _clientWebSocket = ConnectToHubotAsync().Result;
-            Task.Run(() => ListenAsync(), _cancellationToken);
+            base.OnStart(args);
+            _eventLog.WriteEntry("OnStart");
 
-            _userEndpoint = GroupChat.ConnectOfficeCommunicationServer(_userSipUri,
-                _ocsServer, _ocsUsername, _ocsPassword);
+            try
+            {
+                _clientWebSocket = ConnectToHubotAsync().Result;
+                Task.Run(() => ListenAsync(), _cancellationToken);
+            }
+            catch (Exception exception)
+            {
+                _eventLog.WriteEntry("Exception while connecting to Hubot: " + exception.Message, EventLogEntryType.Error);
+            }
 
-            _groupChatEndpoint = GroupChat.ConnectGroupChatServer(_userEndpoint, _lookupServerUri);
+            try
+            {
+                _userEndpoint = GroupChat.ConnectOfficeCommunicationServer(_userSipUri,
+                    _ocsServer, _ocsUsername, _ocsPassword);
 
-            var roomSnapshot = GroupChat.RoomSearchExisting(_groupChatEndpoint, _chatRoomName);
-            _chatRoomSession = GroupChat.RoomJoinExisting(_groupChatEndpoint, roomSnapshot);
+                _groupChatEndpoint = GroupChat.ConnectGroupChatServer(_userEndpoint, _lookupServerUri);
 
-            _chatRoomSession.ChatMessageReceived += SessionChatMessageReceivedAsync;
+                var roomSnapshot = GroupChat.RoomSearchExisting(_groupChatEndpoint, _chatRoomName);
+                _chatRoomSession = GroupChat.RoomJoinExisting(_groupChatEndpoint, roomSnapshot);
 
-            _chatRoomSession.EndSendChatMessage(
-                _chatRoomSession.BeginSendChatMessage("Connected to GroupChat and Hubot...", null, null));
+                _chatRoomSession.ChatMessageReceived += SessionChatMessageReceivedAsync;
+
+                _chatRoomSession.EndSendChatMessage(
+                    _chatRoomSession.BeginSendChatMessage("Connected to GroupChat and Hubot.", null, null));
+            }
+            catch (Exception exception)
+            {
+                _eventLog.WriteEntry("Exception connecting to GroupChat: " + exception.Message, EventLogEntryType.Error);
+            }
+            _eventLog.WriteEntry("Connected to GroupChat and Hubot.");
         }
 
         protected override void OnStop()
         {
-            // Leave the room.
-            // TODO send Hubot room leave message
-            _chatRoomSession.EndLeave(_chatRoomSession.BeginLeave(null, null));
-            _chatRoomSession.ChatMessageReceived -= SessionChatMessageReceivedAsync;
+            base.OnStop();
+            _eventLog.WriteEntry("OnStop");
 
-            // Disconnect from Group Chat and from OCS
-            GroupChat.DisconnectGroupChatServer(_groupChatEndpoint);
-            GroupChat.DisconnectOfficeCommunicationServer(_userEndpoint);
+            try
+            {
+                // Leave the room.
+                // TODO send Hubot room leave message
+                _chatRoomSession.EndLeave(_chatRoomSession.BeginLeave(null, null));
+                _chatRoomSession.ChatMessageReceived -= SessionChatMessageReceivedAsync;
+
+                // Disconnect from Group Chat and from OCS
+                GroupChat.DisconnectGroupChatServer(_groupChatEndpoint);
+                GroupChat.DisconnectOfficeCommunicationServer(_userEndpoint);
+            }
+            catch (Exception exception)
+            {
+                _eventLog.WriteEntry("Exception disconnecting from GroupChat: " + exception.Message, EventLogEntryType.Error);
+            }
         }
 
         private async Task<ClientWebSocket> ConnectToHubotAsync()
@@ -114,17 +157,18 @@ namespace Hubot_MSGroupChatAdapterService
                         }
                     } while (!result.EndOfMessage);
                     var textMessage = JsonConvert.DeserializeObject<TextMessage>(stringResult.ToString());
-                    Console.Out.WriteLine("Got: " + stringResult);
-                    Console.Out.WriteLine("Parsed: " + textMessage);
+                    _eventLog.WriteEntry("Got: " + stringResult);
+                    _eventLog.WriteEntry("Parsed: " + textMessage);
                     var formattedOutboundChatMessage = new FormattedOutboundChatMessage();
                     formattedOutboundChatMessage.AppendPlainText(textMessage.Text);
                     // TODO parse URLs etc
-                    _chatRoomSession.EndSendChatMessage(_chatRoomSession.BeginSendChatMessage(formattedOutboundChatMessage, null, null));
+                    _chatRoomSession.EndSendChatMessage(
+                        _chatRoomSession.BeginSendChatMessage(formattedOutboundChatMessage, null, null));
                 }
             }
             catch (Exception e)
             {
-                Console.Error.WriteLine("Error: " + e);
+                _eventLog.WriteEntry(e.ToString(), EventLogEntryType.Error);
             }
             finally
             {
@@ -134,25 +178,17 @@ namespace Hubot_MSGroupChatAdapterService
 
         private async void SessionChatMessageReceivedAsync(object sender, ChatMessageReceivedEventArgs e)
         {
-            Console.WriteLine("\tChat message received");
+            _eventLog.WriteEntry("\tChat message received");
 
-
-            if (e.Message.FormattedMessageParts.Count == 0)
+            _eventLog.WriteEntry($"\t from:[{e.Message.MessageAuthor}]");
+            _eventLog.WriteEntry($"\t room:[{e.Message.ChatRoomName}]");
+            _eventLog.WriteEntry($"\t body:[{e.Message.MessageContent}]");
+            _eventLog.WriteEntry($"\t parts:[{e.Message.FormattedMessageParts.Count}]");
+            foreach (var part in e.Message.FormattedMessageParts)
             {
-                return;
+                EventLog.WriteEntry($"\t part:[{part.RawText}]");
             }
-            if (e.Message.FormattedMessageParts[0].RawText.Substring(0, 7).Equals(_botName))
-            {
-                Console.WriteLine($"\t from:[{e.Message.MessageAuthor}]");
-                Console.WriteLine($"\t room:[{e.Message.ChatRoomName}]");
-                Console.WriteLine($"\t body:[{e.Message.MessageContent}]");
-                Console.WriteLine($"\t parts:[{e.Message.FormattedMessageParts.Count}]");
-                foreach (var part in e.Message.FormattedMessageParts)
-                {
-                    Console.WriteLine($"\t part:[{part.RawText}]");
-                }
-                await SendToHubotAsync(e.Message);
-            }
+            await SendToHubotAsync(e.Message);
         }
 
         private async Task SendToHubotAsync(ChatMessage message)
@@ -160,7 +196,7 @@ namespace Hubot_MSGroupChatAdapterService
             var textMessage = new TextMessage("text", message.MessageId, message.MessageAuthor.ToString(),
                 message.ChatRoomName, message.MessageContent);
             var stringMessage = JsonConvert.SerializeObject(textMessage);
-            Console.Out.WriteLine("Sending:" + stringMessage);
+            _eventLog.WriteEntry("Sending:" + stringMessage);
             var sendBytes = Encoding.UTF8.GetBytes(stringMessage);
             var sendBuffer = new ArraySegment<byte>(sendBytes);
             await _clientWebSocket.SendAsync(

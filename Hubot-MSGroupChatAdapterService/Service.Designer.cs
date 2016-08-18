@@ -1,6 +1,6 @@
 ﻿namespace Hubot_MSGroupChatAdapterService
 {
-    partial class Service
+    partial class Hubot_MSGroupChatAdapterService
     {
         /// <summary> 
         /// Required designer variable.
@@ -28,8 +28,11 @@
         /// </summary>
         private void InitializeComponent()
         {
-            components = new System.ComponentModel.Container();
-            this.ServiceName = "Service";
+            // 
+            // Hubot_MSGroupChatAdapterService
+            // 
+            this.ServiceName = "Hubot_MSGroupChatAdapterService";
+
         }
 
         #endregion
