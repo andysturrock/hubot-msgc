@@ -17,13 +17,12 @@ namespace Hubot_MSGroupChatAdapterService
     public partial class Hubot_MSGroupChatAdapterService : ServiceBase
     {
         private readonly string _hubotUri;
-        private readonly string _userSipUri;
+        private readonly Uri _userSipUri;
         private readonly string _ocsServer;
         private readonly string _ocsUsername;
         private readonly string _ocsPassword;
         private readonly Uri _lookupServerUri;
         private readonly string _chatRoomName;
-        private readonly string _botName;
         private readonly CancellationToken _cancellationToken = new CancellationTokenSource().Token;
         private ChatRoomSession _chatRoomSession;
         private GroupChatEndpoint _groupChatEndpoint;
@@ -39,17 +38,18 @@ namespace Hubot_MSGroupChatAdapterService
 
             InitializeComponent();
 
-            _eventLog = new EventLog("Hubot_MSGroupChatAdapterService");
+            _eventLog = new EventLog("Hubot_MSGroupChatAdapterServiceLog");
             ((ISupportInitialize)(_eventLog)).BeginInit();
+            _eventLog.Source = "Hubot_MSGroupChatAdapterService";
+            _eventLog.Log = "";  // automatch to event source
             if (!EventLog.SourceExists("Hubot_MSGroupChatAdapterService"))
             {
-                EventLog.CreateEventSource("Hubot_MSGroupChatAdapterService", "Hubot_MSGroupChatAdapterService");
+                EventLog.CreateEventSource("Hubot_MSGroupChatAdapterService", "Application");
             }
-            _eventLog.Source = "Hubot_MSGroupChatAdapterService";
-            _eventLog.Log = "";  // Automatically matches log to source
             ((ISupportInitialize)(_eventLog)).EndInit();
+            //_eventLog = base.EventLog;
 
-            _userSipUri = ConfigurationManager.AppSettings["UserSipUri"];
+            _userSipUri = new Uri(ConfigurationManager.AppSettings["UserSipUri"]);
             _ocsServer = ConfigurationManager.AppSettings["OcsServer"];
             _ocsUsername = ConfigurationManager.AppSettings["OcsUsername"];
             // If we can't find the password in the registry, set to "default" and fail later.
@@ -59,10 +59,15 @@ namespace Hubot_MSGroupChatAdapterService
             {
                 _eventLog.WriteEntry(@"Failed to find password key in HKEY_LOCAL_MACHINE\SOFTWARE\hubot-msg");
             }
+            _ocsPassword = @"p@ssw0rd";
             _lookupServerUri = new Uri(ConfigurationManager.AppSettings["LookupServerUri"]);
             _chatRoomName = ConfigurationManager.AppSettings["ChatRoomName"];
             _botName = ConfigurationManager.AppSettings["BotName"];
+        }
 
+        public void OnStartPublic(string[] args)
+        {
+            OnStart(args);
         }
 
         protected override void OnStart(string[] args)
@@ -188,7 +193,11 @@ namespace Hubot_MSGroupChatAdapterService
             {
                 EventLog.WriteEntry($"\t part:[{part.RawText}]");
             }
-            await SendToHubotAsync(e.Message);
+            // Don't send messages from Hubot back to itself...
+            if (!e.Message.MessageAuthor.Equals(_userSipUri))
+            {
+                await SendToHubotAsync(e.Message);
+            }
         }
 
         private async Task SendToHubotAsync(ChatMessage message)

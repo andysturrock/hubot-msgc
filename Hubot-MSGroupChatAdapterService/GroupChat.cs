@@ -1,19 +1,15 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Linq;
 using System.Net;
 using Microsoft.Rtc.Collaboration;
 using Microsoft.Rtc.Collaboration.GroupChat;
-using Microsoft.Rtc.Collaboration.GroupChat.Management;
-using Microsoft.Rtc.Collaboration.Presence;
 using Microsoft.Rtc.Signaling;
 
 namespace Hubot_MSGroupChatAdapterService
 {
     class GroupChat
     {
-        public static UserEndpoint ConnectOfficeCommunicationServer(string userSipUri, string ocsServer, string username, string password)
+        public static UserEndpoint ConnectOfficeCommunicationServer(Uri userSipUri, string ocsServer, string username, string password)
         {
             // Create the OCS UserEndpoint and attempt to connect to OCS
             Console.WriteLine("Connecting to OCS... [{0}]", ocsServer);
@@ -26,7 +22,7 @@ namespace Hubot_MSGroupChatAdapterService
             collabPlatform.EndStartup(collabPlatform.BeginStartup(null, null));
 
             // You can also pass in the server's port # here.
-            UserEndpointSettings userEndpointSettings = new UserEndpointSettings(userSipUri, ocsServer);
+            UserEndpointSettings userEndpointSettings = new UserEndpointSettings(userSipUri.ToString(), ocsServer);
 
             // When usingSso is true use the current users credentials, otherwise use username and password
             userEndpointSettings.Credential = new NetworkCredential(username, password);
