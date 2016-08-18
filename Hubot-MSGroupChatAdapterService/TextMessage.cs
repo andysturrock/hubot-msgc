@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace Hubot_MSGroupChatAdapterService
 {
-    class TextMessage
+    public class TextMessage
     {
         public TextMessage(string type, long id, string userName, string room, string text)
         {

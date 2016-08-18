@@ -7,8 +7,6 @@ using System.ServiceProcess;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Rtc.Collaboration;
-using Microsoft.Rtc.Collaboration.GroupChat;
 using Microsoft.Win32;
 using Newtonsoft.Json;
 
@@ -18,17 +16,10 @@ namespace Hubot_MSGroupChatAdapterService
     {
         private readonly string _hubotUri;
         private readonly Uri _userSipUri;
-        private readonly string _ocsServer;
-        private readonly string _ocsUsername;
-        private readonly string _ocsPassword;
-        private readonly Uri _lookupServerUri;
-        private readonly string _chatRoomName;
         private readonly CancellationToken _cancellationToken = new CancellationTokenSource().Token;
-        private ChatRoomSession _chatRoomSession;
-        private GroupChatEndpoint _groupChatEndpoint;
-        private UserEndpoint _userEndpoint;
         private ClientWebSocket _clientWebSocket;
         private readonly EventLog _eventLog;
+        private readonly GroupChat _groupChat;
 
         public Hubot_MSGroupChatAdapterService(string hubotUri)
         {
@@ -47,22 +38,23 @@ namespace Hubot_MSGroupChatAdapterService
                 EventLog.CreateEventSource("Hubot_MSGroupChatAdapterService", "Application");
             }
             ((ISupportInitialize)(_eventLog)).EndInit();
-            //_eventLog = base.EventLog;
+            
 
             _userSipUri = new Uri(ConfigurationManager.AppSettings["UserSipUri"]);
-            _ocsServer = ConfigurationManager.AppSettings["OcsServer"];
-            _ocsUsername = ConfigurationManager.AppSettings["OcsUsername"];
+            var ocsServer = ConfigurationManager.AppSettings["OcsServer"];
+            var ocsUsername = ConfigurationManager.AppSettings["OcsUsername"];
             // If we can't find the password in the registry, set to "default" and fail later.
             var password = Registry.GetValue(@"HKEY_LOCAL_MACHINE\SOFTWARE\hubot-msgc", "password", "default");
-            _ocsPassword = password?.ToString() ?? "default";
-            if (_ocsPassword.Equals("default"))
+            var ocsPassword = password?.ToString() ?? "default";
+            if (ocsPassword.Equals("default"))
             {
                 _eventLog.WriteEntry(@"Failed to find password key in HKEY_LOCAL_MACHINE\SOFTWARE\hubot-msg");
             }
-            _ocsPassword = @"p@ssw0rd";
-            _lookupServerUri = new Uri(ConfigurationManager.AppSettings["LookupServerUri"]);
-            _chatRoomName = ConfigurationManager.AppSettings["ChatRoomName"];
-            _botName = ConfigurationManager.AppSettings["BotName"];
+            ocsPassword = @"p@ssw0rd";
+            var lookupServerUri = new Uri(ConfigurationManager.AppSettings["LookupServerUri"]);
+            var chatRoomName = ConfigurationManager.AppSettings["ChatRoomName"];
+
+            _groupChat = new GroupChat(_eventLog, _userSipUri, ocsServer, ocsUsername, ocsPassword, lookupServerUri, chatRoomName);
         }
 
         public void OnStartPublic(string[] args)
@@ -87,18 +79,9 @@ namespace Hubot_MSGroupChatAdapterService
 
             try
             {
-                _userEndpoint = GroupChat.ConnectOfficeCommunicationServer(_userSipUri,
-                    _ocsServer, _ocsUsername, _ocsPassword);
-
-                _groupChatEndpoint = GroupChat.ConnectGroupChatServer(_userEndpoint, _lookupServerUri);
-
-                var roomSnapshot = GroupChat.RoomSearchExisting(_groupChatEndpoint, _chatRoomName);
-                _chatRoomSession = GroupChat.RoomJoinExisting(_groupChatEndpoint, roomSnapshot);
-
-                _chatRoomSession.ChatMessageReceived += SessionChatMessageReceivedAsync;
-
-                _chatRoomSession.EndSendChatMessage(
-                    _chatRoomSession.BeginSendChatMessage("Connected to GroupChat and Hubot.", null, null));
+                _groupChat.TextMessageReceived += GroupChatTextMessageReceivedAsync;
+                _groupChat.Connect();
+                Task.Run(() => _groupChat.SendAsync("Connected to GroupChat and Hubot."), _cancellationToken);
             }
             catch (Exception exception)
             {
@@ -116,16 +99,21 @@ namespace Hubot_MSGroupChatAdapterService
             {
                 // Leave the room.
                 // TODO send Hubot room leave message
-                _chatRoomSession.EndLeave(_chatRoomSession.BeginLeave(null, null));
-                _chatRoomSession.ChatMessageReceived -= SessionChatMessageReceivedAsync;
-
-                // Disconnect from Group Chat and from OCS
-                GroupChat.DisconnectGroupChatServer(_groupChatEndpoint);
-                GroupChat.DisconnectOfficeCommunicationServer(_userEndpoint);
+                _groupChat.Disconnect();
             }
             catch (Exception exception)
             {
                 _eventLog.WriteEntry("Exception disconnecting from GroupChat: " + exception.Message, EventLogEntryType.Error);
+            }
+
+            try
+            {
+                _clientWebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Adapter service stopping",
+                    _cancellationToken).Wait(_cancellationToken);
+            }
+            catch (Exception exception)
+            {
+                _eventLog.WriteEntry("Exception disconnecting from Hubot: " + exception.Message, EventLogEntryType.Error);
             }
         }
 
@@ -136,7 +124,7 @@ namespace Hubot_MSGroupChatAdapterService
             return socket;
         }
 
-        private async void ListenAsync()
+        private async Task ListenAsync()
         {
             const int receiveChunkSize = 1024;
             try
@@ -162,55 +150,46 @@ namespace Hubot_MSGroupChatAdapterService
                         }
                     } while (!result.EndOfMessage);
                     var textMessage = JsonConvert.DeserializeObject<TextMessage>(stringResult.ToString());
-                    _eventLog.WriteEntry("Got: " + stringResult);
-                    _eventLog.WriteEntry("Parsed: " + textMessage);
-                    var formattedOutboundChatMessage = new FormattedOutboundChatMessage();
-                    formattedOutboundChatMessage.AppendPlainText(textMessage.Text);
-                    // TODO parse URLs etc
-                    _chatRoomSession.EndSendChatMessage(
-                        _chatRoomSession.BeginSendChatMessage(formattedOutboundChatMessage, null, null));
+                    HubotTextMessageReceivedAsync(this, new TextMessageReceivedEventArgs(textMessage));
                 }
             }
             catch (Exception e)
             {
                 _eventLog.WriteEntry(e.ToString(), EventLogEntryType.Error);
             }
-            finally
-            {
-                _clientWebSocket.Dispose();
-            }
         }
 
-        private async void SessionChatMessageReceivedAsync(object sender, ChatMessageReceivedEventArgs e)
+        private async void HubotTextMessageReceivedAsync(object sender, TextMessageReceivedEventArgs e)
         {
-            _eventLog.WriteEntry("\tChat message received");
+            await _groupChat.SendAsync(e.TextMessage.Text);
+        }
 
-            _eventLog.WriteEntry($"\t from:[{e.Message.MessageAuthor}]");
-            _eventLog.WriteEntry($"\t room:[{e.Message.ChatRoomName}]");
-            _eventLog.WriteEntry($"\t body:[{e.Message.MessageContent}]");
-            _eventLog.WriteEntry($"\t parts:[{e.Message.FormattedMessageParts.Count}]");
-            foreach (var part in e.Message.FormattedMessageParts)
-            {
-                EventLog.WriteEntry($"\t part:[{part.RawText}]");
-            }
+        private async void GroupChatTextMessageReceivedAsync(object sender, TextMessageReceivedEventArgs e)
+        {
             // Don't send messages from Hubot back to itself...
-            if (!e.Message.MessageAuthor.Equals(_userSipUri))
+            var userSipUri = new Uri(e.TextMessage.UserName);
+            if (!userSipUri.Equals(_userSipUri))
             {
-                await SendToHubotAsync(e.Message);
+                await SendToHubotAsync(e.TextMessage);
             }
         }
 
-        private async Task SendToHubotAsync(ChatMessage message)
+        private async Task SendToHubotAsync(TextMessage textMessage)
         {
-            var textMessage = new TextMessage("text", message.MessageId, message.MessageAuthor.ToString(),
-                message.ChatRoomName, message.MessageContent);
             var stringMessage = JsonConvert.SerializeObject(textMessage);
             _eventLog.WriteEntry("Sending:" + stringMessage);
             var sendBytes = Encoding.UTF8.GetBytes(stringMessage);
             var sendBuffer = new ArraySegment<byte>(sendBytes);
-            await _clientWebSocket.SendAsync(
-                sendBuffer,
-                WebSocketMessageType.Text, true, _cancellationToken);
+            try
+            {
+                await _clientWebSocket.SendAsync(
+                    sendBuffer,
+                    WebSocketMessageType.Text, true, _cancellationToken);
+            }
+            catch (Exception e)
+            {
+                _eventLog.WriteEntry(e.ToString(), EventLogEntryType.Error);
+            }
         }
     }
 }
