@@ -11,7 +11,7 @@ namespace Hubot_MSGroupChatAdapterService
         {
             ServiceBase[] servicesToRun = new ServiceBase[]
             {
-                new Hubot_MSGroupChatAdapterService(@"ws://172.31.40.209:4773")
+                new Hubot_MSGroupChatAdapterService()
             };
             ServiceBase.Run(servicesToRun);
 

@@ -14,19 +14,15 @@ namespace Hubot_MSGroupChatAdapterService
 {
     public partial class Hubot_MSGroupChatAdapterService : ServiceBase
     {
-        private readonly string _hubotUri;
         private readonly Uri _userSipUri;
         private readonly CancellationToken _cancellationToken = new CancellationTokenSource().Token;
-        private ClientWebSocket _clientWebSocket;
+        //private ClientWebSocket _clientWebSocket;
         private readonly EventLog _eventLog;
         private readonly GroupChat _groupChat;
+        private readonly Hubot _hubot;
 
-        public Hubot_MSGroupChatAdapterService(string hubotUri)
+        public Hubot_MSGroupChatAdapterService()
         {
-            if (string.IsNullOrEmpty(hubotUri))
-                throw new ArgumentException("Value cannot be null or empty.", nameof(hubotUri));
-            _hubotUri = hubotUri;
-
             InitializeComponent();
 
             _eventLog = new EventLog("Hubot_MSGroupChatAdapterServiceLog");
@@ -39,7 +35,7 @@ namespace Hubot_MSGroupChatAdapterService
             }
             ((ISupportInitialize)(_eventLog)).EndInit();
             
-
+            var hubotUri = new Uri(ConfigurationManager.AppSettings["HubotUri"]);
             _userSipUri = new Uri(ConfigurationManager.AppSettings["UserSipUri"]);
             var ocsServer = ConfigurationManager.AppSettings["OcsServer"];
             var ocsUsername = ConfigurationManager.AppSettings["OcsUsername"];
@@ -55,6 +51,8 @@ namespace Hubot_MSGroupChatAdapterService
             var chatRoomName = ConfigurationManager.AppSettings["ChatRoomName"];
 
             _groupChat = new GroupChat(_eventLog, _userSipUri, ocsServer, ocsUsername, ocsPassword, lookupServerUri, chatRoomName);
+
+            _hubot = new Hubot(_eventLog, hubotUri);
         }
 
         public void OnStartPublic(string[] args)
@@ -69,8 +67,9 @@ namespace Hubot_MSGroupChatAdapterService
 
             try
             {
-                _clientWebSocket = ConnectToHubotAsync().Result;
-                Task.Run(() => ListenAsync(), _cancellationToken);
+                _hubot.ConnectAsync(_cancellationToken).Wait(_cancellationToken);
+                _hubot.TextMessageReceived += HubotTextMessageReceived;
+                Task.Run(() => _hubot.ListenAsync(_cancellationToken), _cancellationToken);
             }
             catch (Exception exception)
             {
@@ -81,7 +80,7 @@ namespace Hubot_MSGroupChatAdapterService
             {
                 _groupChat.TextMessageReceived += GroupChatTextMessageReceivedAsync;
                 _groupChat.Connect();
-                Task.Run(() => _groupChat.SendAsync("Connected to GroupChat and Hubot."), _cancellationToken);
+                _groupChat.Send("Connected to GroupChat and Hubot.");
             }
             catch (Exception exception)
             {
@@ -108,8 +107,7 @@ namespace Hubot_MSGroupChatAdapterService
 
             try
             {
-                _clientWebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Adapter service stopping",
-                    _cancellationToken).Wait(_cancellationToken);
+                _hubot.DisconnectAsync(_cancellationToken).Wait(_cancellationToken);
             }
             catch (Exception exception)
             {
@@ -117,51 +115,9 @@ namespace Hubot_MSGroupChatAdapterService
             }
         }
 
-        private async Task<ClientWebSocket> ConnectToHubotAsync()
+        private void HubotTextMessageReceived(object sender, TextMessageReceivedEventArgs e)
         {
-            var socket = new ClientWebSocket();
-            await socket.ConnectAsync(new Uri(_hubotUri), _cancellationToken);
-            return socket;
-        }
-
-        private async Task ListenAsync()
-        {
-            const int receiveChunkSize = 1024;
-            try
-            {
-                while (_clientWebSocket.State == WebSocketState.Open)
-                {
-                    var buffer = new byte[receiveChunkSize];
-                    WebSocketReceiveResult result;
-                    var stringResult = new StringBuilder();
-                    do
-                    {
-                        result = await _clientWebSocket.ReceiveAsync(new ArraySegment<byte>(buffer), _cancellationToken);
-                        if (result.MessageType == WebSocketMessageType.Close)
-                        {
-                            await
-                                _clientWebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, string.Empty,
-                                    CancellationToken.None);
-                        }
-                        else
-                        {
-                            var str = Encoding.UTF8.GetString(buffer, 0, result.Count);
-                            stringResult.Append(str);
-                        }
-                    } while (!result.EndOfMessage);
-                    var textMessage = JsonConvert.DeserializeObject<TextMessage>(stringResult.ToString());
-                    HubotTextMessageReceivedAsync(this, new TextMessageReceivedEventArgs(textMessage));
-                }
-            }
-            catch (Exception e)
-            {
-                _eventLog.WriteEntry(e.ToString(), EventLogEntryType.Error);
-            }
-        }
-
-        private async void HubotTextMessageReceivedAsync(object sender, TextMessageReceivedEventArgs e)
-        {
-            await _groupChat.SendAsync(e.TextMessage.Text);
+            _groupChat.Send(e.TextMessage.Text);
         }
 
         private async void GroupChatTextMessageReceivedAsync(object sender, TextMessageReceivedEventArgs e)
@@ -170,25 +126,7 @@ namespace Hubot_MSGroupChatAdapterService
             var userSipUri = new Uri(e.TextMessage.UserName);
             if (!userSipUri.Equals(_userSipUri))
             {
-                await SendToHubotAsync(e.TextMessage);
-            }
-        }
-
-        private async Task SendToHubotAsync(TextMessage textMessage)
-        {
-            var stringMessage = JsonConvert.SerializeObject(textMessage);
-            _eventLog.WriteEntry("Sending:" + stringMessage);
-            var sendBytes = Encoding.UTF8.GetBytes(stringMessage);
-            var sendBuffer = new ArraySegment<byte>(sendBytes);
-            try
-            {
-                await _clientWebSocket.SendAsync(
-                    sendBuffer,
-                    WebSocketMessageType.Text, true, _cancellationToken);
-            }
-            catch (Exception e)
-            {
-                _eventLog.WriteEntry(e.ToString(), EventLogEntryType.Error);
+                await _hubot.SendAsync(e.TextMessage, _cancellationToken);
             }
         }
     }
