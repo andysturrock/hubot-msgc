@@ -2,21 +2,17 @@
 using System.ComponentModel;
 using System.Configuration;
 using System.Diagnostics;
-using System.Net.WebSockets;
 using System.ServiceProcess;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Win32;
-using Newtonsoft.Json;
 
 namespace Hubot_MSGroupChatAdapterService
 {
     public partial class Hubot_MSGroupChatAdapterService : ServiceBase
     {
         private readonly Uri _userSipUri;
-        private readonly CancellationToken _cancellationToken = new CancellationTokenSource().Token;
-        //private ClientWebSocket _clientWebSocket;
+        private readonly CancellationToken _cancellationToken;
         private readonly EventLog _eventLog;
         private readonly GroupChat _groupChat;
         private readonly Hubot _hubot;
@@ -24,6 +20,8 @@ namespace Hubot_MSGroupChatAdapterService
         public Hubot_MSGroupChatAdapterService()
         {
             InitializeComponent();
+
+            _cancellationToken = new CancellationTokenSource().Token;
 
             _eventLog = new EventLog("Hubot_MSGroupChatAdapterServiceLog");
             ((ISupportInitialize)(_eventLog)).BeginInit();
