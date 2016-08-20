@@ -29,17 +29,9 @@ class MicrosoftGroupChatAdapter extends Adapter
       "room": envelope.room,
       "text": out.join('')
     }
-    console.log("textMessage:")
-    console.log(textMessage)
-    console.log("End textMessage")
     json = JSON.stringify(textMessage)
 
-    console.log("json:")
-    console.log(json)
-    console.log("end json")
-
     @wss.clients.forEach (client) =>
-      console.log("Sending #{json}")
       client.send(json)
 
   emote: (envelope, strings...) ->
