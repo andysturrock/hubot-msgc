@@ -111,6 +111,7 @@ namespace Hubot_MSGroupChatAdapterService
             try
             {
                 _eventLog.WriteEntry("Disconnecting from GroupChat...");
+                _groupChat.Send("Disconnecting from GroupChat and Hubot.");
                 _groupChat.Disconnect();
                 _eventLog.WriteEntry("Disconnected from GroupChat..");
             }
