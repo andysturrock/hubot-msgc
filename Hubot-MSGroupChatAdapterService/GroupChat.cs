@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Diagnostics;
 using System.Net;
 using Microsoft.Rtc.Collaboration;
 using Microsoft.Rtc.Collaboration.GroupChat;
@@ -7,7 +6,7 @@ using Microsoft.Rtc.Signaling;
 
 namespace Hubot_MSGroupChatAdapterService
 {
-    class GroupChat
+    public class GroupChat
     {
         private ChatRoomSession _chatRoomSession;
         private GroupChatEndpoint _groupChatEndpoint;
@@ -21,17 +20,26 @@ namespace Hubot_MSGroupChatAdapterService
         // Cache room session in Dictionary mapping room name to session?
         // Would also need to support event handler per room
         private readonly string _chatRoomName;
-        private readonly EventLog _eventLog;
+        private readonly bool _useSso;
 
-        public GroupChat(EventLog eventLog, Uri userSipUri, string ocsServer, string ocsUsername, string ocsPassword, Uri lookupServerUri, string chatRoomName)
+        public GroupChat(Uri userSipUri, string ocsServer, string ocsUsername, string ocsPassword, Uri lookupServerUri, string chatRoomName)
         {
-            _eventLog = eventLog;
             _userSipUri = userSipUri;
             _ocsServer = ocsServer;
             _ocsUsername = ocsUsername;
             _ocsPassword = ocsPassword;
             _lookupServerUri = lookupServerUri;
             _chatRoomName = chatRoomName;
+            _useSso = false;
+        }
+
+        public GroupChat(Uri userSipUri, string ocsServer, Uri lookupServerUri, string chatRoomName)
+        {
+            _userSipUri = userSipUri;
+            _ocsServer = ocsServer;
+            _lookupServerUri = lookupServerUri;
+            _chatRoomName = chatRoomName;
+            _useSso = true;
         }
 
         public void Connect()
@@ -81,57 +89,38 @@ namespace Hubot_MSGroupChatAdapterService
 
         private UserEndpoint ConnectOfficeCommunicationServer()
         {
-            // Create the OCS UserEndpoint and attempt to connect to OCS
-            _eventLog.WriteEntry($"Connecting to OCS... [{_ocsServer}]");
+            var clientPlatformSettings = new ClientPlatformSettings("GroupChat.Test", SipTransportType.Tls);
+            var collaborationPlatform = new CollaborationPlatform(clientPlatformSettings);
 
-            // Use the appropriate SipTransportType depending on current OCS deployment
-            var platformSettings = new ClientPlatformSettings("GroupChat.Test", SipTransportType.Tls);
-            var collabPlatform = new CollaborationPlatform(platformSettings);
+            collaborationPlatform.EndStartup(collaborationPlatform.BeginStartup(null, null));
 
-            // Initialize the platform
-            collabPlatform.EndStartup(collabPlatform.BeginStartup(null, null));
-
-            // You can also pass in the server's port # here.
             var userEndpointSettings = new UserEndpointSettings(_userSipUri.ToString(), _ocsServer);
+            userEndpointSettings.Credential = _useSso ? SipCredentialCache.DefaultCredential : new NetworkCredential(_ocsUsername, _ocsPassword);
+            var userEndpoint = new UserEndpoint(collaborationPlatform, userEndpointSettings);
 
-            // When usingSso is true use the current users credentials, otherwise use username and password
-            userEndpointSettings.Credential = new NetworkCredential(_ocsUsername, _ocsPassword);
-
-            var userEndpoint = new UserEndpoint(collabPlatform, userEndpointSettings);
-
-            // Login to OCS.
             userEndpoint.EndEstablish(userEndpoint.BeginEstablish(null, null));
 
-            _eventLog.WriteEntry("Success");
             return userEndpoint;
         }
 
         private GroupChatEndpoint ConnectGroupChatServer()
         {
-            _eventLog.WriteEntry("Connecting to Group Chat Server...");
-
-            GroupChatEndpoint groupChatEndpoint = new GroupChatEndpoint(_lookupServerUri, _userEndpoint);
+            var groupChatEndpoint = new GroupChatEndpoint(_lookupServerUri, _userEndpoint);
 
             groupChatEndpoint.EndEstablish(groupChatEndpoint.BeginEstablish(null, null));
 
-            _eventLog.WriteEntry("Success");
             return groupChatEndpoint;
         }
 
         private ChatRoomSnapshot FindChatRoom()
         {
-            _eventLog.WriteEntry($"Searching for chat room [{_chatRoomName}]...");
-
             var chatServices = _groupChatEndpoint.GroupChatServices;
 
             var chatRooms = chatServices.EndBrowseChatRoomsByCriteria(
                 chatServices.BeginBrowseChatRoomsByCriteria(_chatRoomName, false, null, null));
 
-            _eventLog.WriteEntry($"Found {chatRooms.Count} chat room(s):");
             if (chatRooms.Count > 0)
             {
-                foreach (var snapshot in chatRooms)
-                    _eventLog.WriteEntry($"name: {snapshot.Name}\nuri:{snapshot.ChatRoomUri}");
                 return chatRooms[0];
             }
             return null;
@@ -139,35 +128,23 @@ namespace Hubot_MSGroupChatAdapterService
 
         private ChatRoomSession JoinChatRoom(ChatRoomSummary summary)
         {
-            _eventLog.WriteEntry($"Joining chat room [{summary.Name}]...");
-
             var session = new ChatRoomSession(_groupChatEndpoint);
             session.EndJoin(session.BeginJoin(summary, null, null));
-
-            _eventLog.WriteEntry("Success");
 
             return session;
         }
 
         private void DisconnectGroupChatServer()
         {
-            _eventLog.WriteEntry("Disconnecting from Group Chat Server...");
-
             _groupChatEndpoint.EndTerminate(_groupChatEndpoint.BeginTerminate(null, null));
-
-            _eventLog.WriteEntry("Success");
         }
 
         private void DisconnectOfficeCommunicationServer()
         {
-            _eventLog.WriteEntry("Disconnecting from OCS...");
-
             _userEndpoint.EndTerminate(_userEndpoint.BeginTerminate(null, null));
 
             CollaborationPlatform platform = _userEndpoint.Platform;
             platform.EndShutdown(platform.BeginShutdown(null, null));
-
-            _eventLog.WriteEntry("Success");
         }
     }
 }

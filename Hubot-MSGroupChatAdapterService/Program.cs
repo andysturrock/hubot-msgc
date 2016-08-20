@@ -2,7 +2,7 @@
 
 namespace Hubot_MSGroupChatAdapterService
 {
-    static class Program
+    public static class Program
     {
         /// <summary>
         /// The main entry point for the application.
@@ -11,7 +11,7 @@ namespace Hubot_MSGroupChatAdapterService
         {
             ServiceBase[] servicesToRun = new ServiceBase[]
             {
-                new Hubot_MSGroupChatAdapterService()
+                new HubotMsGroupChatAdapterService()
             };
             ServiceBase.Run(servicesToRun);
 
