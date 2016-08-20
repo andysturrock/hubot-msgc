@@ -7,6 +7,10 @@ HttpClient                    = require 'scoped-http-client'
 
 PROXY_HOST = process.env.PROXY_HOST
 PROXY_PORT = process.env.PROXY_PORT
+HUBOT_MSGC_LISTEN_PORT = process.env.HUBOT_MSGC_LISTEN_PORT
+unless HUBOT_MSGC_LISTEN_PORT?
+  console.log "Missing HUBOT_MSGC_LISTEN_PORT environment variable.  Please set and try again."
+  process.exit(1)
 
 class MicrosoftGroupChatAdapter extends Adapter
 
@@ -64,7 +68,7 @@ class MicrosoftGroupChatAdapter extends Adapter
     if (PROXY_HOST)
       @robot.http = @http
 
-    @wss = new WebSocketServer {port: 4773}
+    @wss = new WebSocketServer {port: HUBOT_MSGC_LISTEN_PORT}
     @wss.on 'connection', (ws) =>
       @robot.logger.info("Websocket connection opened")
       ws.on 'message', @onMessage
