@@ -91,6 +91,7 @@ namespace Hubot_MSGroupChatAdapterService
             try
             {
                 _eventLog.WriteEntry("Connecting to GroupChat...");
+                _groupChat.Disconnected += GroupChatDisconnected;
                 _groupChat.TextMessageReceived += GroupChatTextMessageReceivedAsync;
                 _groupChat.Connect();
                 _eventLog.WriteEntry("Connected to GroupChat.");
@@ -103,6 +104,26 @@ namespace Hubot_MSGroupChatAdapterService
             }
         }
 
+        private void GroupChatDisconnected(object sender, DisconnectedEventArgs e)
+        {
+            _eventLog.WriteEntry("Unexpected disconnection from GroupChat: " + e.Reason, EventLogEntryType.Error);
+            // Disconnect completely
+            try
+            {
+                _groupChat.Disconnected -= GroupChatDisconnected;
+                _groupChat.Disconnect();
+            }
+            catch (Exception exception)
+            {
+                _eventLog.WriteEntry("Exception while disconnecting from GC: " + exception);
+            }
+            // And reconnect
+            _eventLog.WriteEntry("Reconnecting to GroupChat...");
+            _groupChat.Connect();
+            _groupChat.Disconnected += GroupChatDisconnected;
+            _eventLog.WriteEntry("Reconnected to GroupChat.");
+        }
+
         protected override void OnStop()
         {
             base.OnStop();
@@ -112,6 +133,8 @@ namespace Hubot_MSGroupChatAdapterService
             {
                 _eventLog.WriteEntry("Disconnecting from GroupChat...");
                 _groupChat.Send("Disconnecting from GroupChat and Hubot.");
+                _groupChat.TextMessageReceived -= GroupChatTextMessageReceivedAsync;
+                _groupChat.Disconnected -= GroupChatDisconnected;
                 _groupChat.Disconnect();
                 _eventLog.WriteEntry("Disconnected from GroupChat..");
             }
