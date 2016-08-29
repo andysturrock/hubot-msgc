@@ -2,6 +2,7 @@
 using System.ComponentModel;
 using System.Configuration;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.ServiceProcess;
 using System.Threading;
 using System.Threading.Tasks;
@@ -73,12 +74,20 @@ namespace Hubot_MSGroupChatAdapterService
         {
             base.OnStart(args);
             _eventLog.WriteEntry("OnStart");
+            // Do the actual starting on a new thread so we
+            // can return from here as quickly as possible.
+            Task.Run(() => Start(), _cancellationToken);
+            _eventLog.WriteEntry("Finishing OnStart");
+        }
 
+        private void Start()
+        {
             try
             {
                 _eventLog.WriteEntry("Connecting to Hubot...");
-                _hubot.ConnectAsync(_cancellationToken).Wait(_cancellationToken);
                 _hubot.TextMessageReceived += HubotTextMessageReceived;
+                _hubot.ConnectAsync(_cancellationToken).Wait(_cancellationToken);
+                _hubot.Disconnected += HubotDisconnected;
                 Task.Run(() => _hubot.ListenAsync(_cancellationToken), _cancellationToken);
                 _eventLog.WriteEntry("Connected to Hubot.");
             }
@@ -91,9 +100,9 @@ namespace Hubot_MSGroupChatAdapterService
             try
             {
                 _eventLog.WriteEntry("Connecting to GroupChat...");
-                _groupChat.Disconnected += GroupChatDisconnected;
                 _groupChat.TextMessageReceived += GroupChatTextMessageReceivedAsync;
                 _groupChat.Connect();
+                _groupChat.Disconnected += GroupChatDisconnected;
                 _eventLog.WriteEntry("Connected to GroupChat.");
                 _groupChat.Send("Connected to GroupChat and Hubot.");
             }
@@ -101,6 +110,66 @@ namespace Hubot_MSGroupChatAdapterService
             {
                 _eventLog.WriteEntry("Exception connecting to GroupChat: " + exception.Message, EventLogEntryType.Error);
                 throw;
+            }
+        }
+
+        private void HubotDisconnected(object sender, DisconnectedEventArgs e)
+        {
+            _eventLog.WriteEntry("Unexpected disconnection from Hubot: " + e.Reason, EventLogEntryType.Error);
+            try
+            {
+                _groupChat.Send("Unexpected disconnection from Hubot.  See event log for details.");
+            }
+            catch (Exception)
+            {
+                // Oh well
+            }
+            // Disconnect completely
+            try
+            {
+                _hubot.Disconnected -= GroupChatDisconnected;
+                _hubot.DisconnectAsync(_cancellationToken).Wait(_cancellationToken);
+            }
+            catch (Exception exception)
+            {
+                _eventLog.WriteEntry("Exception while disconnecting from Hubot: " + exception);
+            }
+            // And reconnect
+            _eventLog.WriteEntry("Reconnecting to Hubot...");
+            try
+            {
+                _groupChat.Send("Reconnecting to Hubot...");
+            }
+            catch (Exception)
+            {
+                // Oh well
+            }
+            try
+            {
+                _hubot.ConnectAsync(_cancellationToken).Wait(_cancellationToken);
+                _hubot.Disconnected += GroupChatDisconnected;
+                Task.Run(() => _hubot.ListenAsync(_cancellationToken), _cancellationToken);
+                _eventLog.WriteEntry("Reconnected to Hubot.");
+                try
+                {
+                    _groupChat.Send("Reconnected to Hubot.");
+                }
+                catch (Exception)
+                {
+                    // Oh well
+                }
+            }
+            catch (Exception exception)
+            {
+                _eventLog.WriteEntry("Error reconnecting to Hubot: " + exception);
+                try
+                {
+                    _groupChat.Send("Error reconnecting to Hubot.  See event log for details.");
+                }
+                catch (Exception)
+                {
+                    // Oh well
+                }
             }
         }
 
@@ -115,12 +184,13 @@ namespace Hubot_MSGroupChatAdapterService
             }
             catch (Exception exception)
             {
-                _eventLog.WriteEntry("Exception while disconnecting from GC: " + exception);
+                _eventLog.WriteEntry("Exception while disconnecting from GroupChat: " + exception);
             }
             // And reconnect
             _eventLog.WriteEntry("Reconnecting to GroupChat...");
             _groupChat.Connect();
             _groupChat.Disconnected += GroupChatDisconnected;
+            _groupChat.Send("Sorry, I disconnected for a bit but I'm back now.  Did I miss anything?");
             _eventLog.WriteEntry("Reconnected to GroupChat.");
         }
 
@@ -146,6 +216,7 @@ namespace Hubot_MSGroupChatAdapterService
             try
             {
                 _eventLog.WriteEntry("Disconnecting from Hubot...");
+                _hubot.Disconnected -= GroupChatDisconnected;
                 // TODO send Hubot room leave message
                 _hubot.DisconnectAsync(_cancellationToken).Wait(_cancellationToken);
                 _eventLog.WriteEntry("Disconnected from Hubot...");
@@ -184,6 +255,7 @@ namespace Hubot_MSGroupChatAdapterService
                 catch (Exception exception)
                 {
                     _eventLog.WriteEntry("Error sending to Hubot: " + exception.Message, EventLogEntryType.Error);
+                    _groupChat.Send("Error sending to Hubot.  See event log for details.");
                 }
             }
         }

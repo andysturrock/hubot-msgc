@@ -1,4 +1,5 @@
 ﻿using System.ServiceProcess;
+using System.Threading;
 
 namespace Hubot_MSGroupChatAdapterService
 {
@@ -18,8 +19,8 @@ namespace Hubot_MSGroupChatAdapterService
             // To run from command line/in debugger, comment out lines above and uncomment these lines...
 
             //AutoResetEvent shutdownEvent = new AutoResetEvent(false);
-            //var hubot_MSGroupChatAdapterService = new Hubot_MSGroupChatAdapterService(@"ws://172.31.40.209:4773");
-            //hubot_MSGroupChatAdapterService.OnStartPublic(null);
+            //var hubotMsGroupChatAdapterService = new HubotMsGroupChatAdapterService();
+            //hubotMsGroupChatAdapterService.OnStartPublic(null);
             //shutdownEvent.WaitOne();
         }
     }
