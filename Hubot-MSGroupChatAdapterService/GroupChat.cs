@@ -102,11 +102,39 @@ namespace Hubot_MSGroupChatAdapterService
             }
         }
 
+        private string ParseSipUserName(string sipUserName)
+        {
+            var parsedUserName = sipUserName;
+            if (sipUserName.StartsWith("sip:"))
+            {
+                parsedUserName = sipUserName.Substring(4);
+            }
+
+            return parsedUserName;
+        }
+
         public void Send(string message)
         {
-            // TODO parse URLs etc
             var formattedOutboundChatMessage = new FormattedOutboundChatMessage();
             formattedOutboundChatMessage.AppendPlainText(message);
+
+            try
+            {
+                _chatRoomSession.EndSendChatMessage(
+                    _chatRoomSession.BeginSendChatMessage(formattedOutboundChatMessage, null, null));
+            }
+            catch (Exception e)
+            {
+                Disconnect("Server disconnected: " + e);
+            }
+        }
+
+        public void Send(TextMessage textMessage)
+        {
+            var parsedUserName = ParseSipUserName(textMessage.UserName);
+            // TODO parse URLs etc
+            var formattedOutboundChatMessage = new FormattedOutboundChatMessage();
+            formattedOutboundChatMessage.AppendPlainText($"@{parsedUserName} {textMessage.Text}");
 
             try
             {

@@ -233,7 +233,7 @@ namespace Hubot_MSGroupChatAdapterService
         {
             try
             {
-                _groupChat.Send(e.TextMessage.Text);
+                _groupChat.Send(e.TextMessage);
             }
             catch (Exception exception)
             {
