@@ -68,7 +68,6 @@ namespace Hubot_MSGroupChatAdapterService
             Connected = true;
         }
 
-        // Implement a call with the right signature for events going off
         private void OnTimerEvent(object source, ElapsedEventArgs e)
         {
             if (_userEndpoint.State != LocalEndpointState.Established ||
@@ -218,11 +217,7 @@ namespace Hubot_MSGroupChatAdapterService
             var chatRooms = chatServices.EndBrowseChatRoomsByCriteria(
                 chatServices.BeginBrowseChatRoomsByCriteria(_chatRoomName, false, null, null));
 
-            if (chatRooms.Count > 0)
-            {
-                return chatRooms[0];
-            }
-            return null;
+            return chatRooms.Count > 0 ? chatRooms[0] : null;
         }
 
         private ChatRoomSession JoinChatRoom(ChatRoomSummary summary)
