@@ -293,3 +293,5 @@ paket-files/
 # CodeRush
 .cr/
 
+# Ansible retries
+*.retry

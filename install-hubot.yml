@@ -1,0 +1,18 @@
+---
+- hosts: tag_Hubot_host
+  user: ec2-user
+  vars:
+    bot_name: oilbot
+  tasks:
+  - name: Install curl
+    yum: name=curl state=latest
+  - name: Install nodesource setup
+    shell: curl -sL https://rpm.nodesource.com/setup_6.x | /bin/bash - creates=/etc/pki/rpm-gpg/NODESOURCE-GPG-SIGNING-KEY-EL
+  - name: Install node
+    yum: name=nodejs state=latest
+  - name: Install Hubot Generator
+    command: npm install -g yo generator-hubot creates=/usr/lib/node_modules/generator-hubot
+  - name: Create Hubot directory
+    file: path=/home/ec2-user/{{ bot_name }} state=directory group=ec2-user owner=ec2-user
+  - name: Generate Hubot
+    command: yo hubot chdir=/home/ec2-user/{{ bot_name }}
