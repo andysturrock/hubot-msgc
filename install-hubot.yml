@@ -2,17 +2,27 @@
 - hosts: tag_Hubot_host
   user: ec2-user
   vars:
+    bot_user: ec2-user
     bot_name: oilbot
+    bot_owner: Andy Sturrock <github@sturrock.org>
+    bot_description: Hubot for Oil
+    bot_adapter: msgc
   tasks:
   - name: Install curl
+    become: true
     yum: name=curl state=latest
   - name: Install nodesource setup
+    become: true
     shell: curl -sL https://rpm.nodesource.com/setup_6.x | /bin/bash - creates=/etc/pki/rpm-gpg/NODESOURCE-GPG-SIGNING-KEY-EL
   - name: Install node
+    become: true
     yum: name=nodejs state=latest
   - name: Install Hubot Generator
+    become: true
     command: npm install -g yo generator-hubot creates=/usr/lib/node_modules/generator-hubot
   - name: Create Hubot directory
-    file: path=/home/ec2-user/{{ bot_name }} state=directory group=ec2-user owner=ec2-user
+    become: true
+    file: path=/home/{{ bot_user }}/{{ bot_name }} state=directory group={{ bot_user }} owner={{ bot_user }}
   - name: Generate Hubot
-    command: yo hubot chdir=/home/ec2-user/{{ bot_name }}
+    become_user: "{{ bot_user }}"
+    command: yo hubot --insight --owner="{{ bot_owner }}" --name="{{ bot_name }}" --description "{{ bot_description }}" --adapter=msgc chdir=/home/{{ bot_user }}/{{ bot_name }} creates=/home/{{ bot_user }}/package.json
