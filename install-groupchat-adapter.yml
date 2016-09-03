@@ -1,0 +1,37 @@
+---
+
+# For this to work in AWS I had to set the following options in ec2.ini:
+# destination_variable = private_dns_name
+# vpc_destination_variable = private_ip_address
+# destination_format = {0}
+# destination_format_tags = Name
+#
+# And something like this in group_vars:
+#ansible_user: Administrator@AD.STURROCK.ORG
+#ansible_password: my_secret_password
+#ansible_port: 5986
+#ansible_connection: winrm
+#ansible_winrm_server_cert_validation: ignore
+#
+# Otherwise the Windows remoting stuff wouldn't connect.
+
+- hosts: tag_Groupchat_Adapter_host
+  vars:
+    git_repo_url: https://github.com/andysturrock/Hubot-MSGroupChatAdapterService.git
+  tasks:
+#  - name: Clone git repo locally
+#    local_action: git repo={{ git_repo_url }} dest=/tmp/Hubot-MSGroupChatAdapterService
+
+  - name: Create remote directory
+    action: win_file path=C:\Hubot-MSGroupChatAdapterService state=directory
+
+  - name: Copy file from local to remote
+    action: win_copy src=/tmp/Hubot-MSGroupChatAdapterService/Hubot-MSGroupChatAdapterService.zip dest=c:\Windows\Temp
+
+  - name: Unzip file
+    action: win_unzip src=c:\Windows\Temp\Hubot-MSGroupChatAdapterService.zip dest=C:\Hubot-MSGroupChatAdapterService creates=C:\Hubot-MSGroupChatAdapterService
+
+  - name: Install service
+    action: win_nssm name=Hubot_MSGroupChatAdapterService application="C:\Hubot-MSGroupChatAdapterService\Hubot-MSGroupChatAdapterService.exe" state=started
+
+#action: win_nssm application="C:\Hubot-MSGroupChatAdapterService\Hubot-MSGroupChatAdapterService.exe" name=Hubot_MSGroupChatAdapterService start_mode=auto state=started
