@@ -1,0 +1,16 @@
+[Unit]
+Description=Hubot adapter for Microsoft GroupChat
+Documentation=https://github.com/andysturrock/hubot-msgc
+After=network.target
+
+[Service]
+User=ec2-user
+WorkingDirectory=/home/ec2-user/oilbot
+Environment=HUBOT_MSGC_LISTEN_PORT=4773
+Environment=HUBOT_LOG_LEVEL=debug
+ExecStart=/home/ec2-user/oilbot/bin/hubot -a msgc
+Type=simple
+PIDFile=/var/run/hubot.pid
+
+[Install]
+WantedBy=default.target
