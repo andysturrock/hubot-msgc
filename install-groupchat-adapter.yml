@@ -19,19 +19,17 @@
   vars:
     git_repo_url: https://github.com/andysturrock/Hubot-MSGroupChatAdapterService.git
   tasks:
-#  - name: Clone git repo locally
-#    local_action: git repo={{ git_repo_url }} dest=/tmp/Hubot-MSGroupChatAdapterService
+  - name: Clone git repo locally
+    local_action: git repo={{ git_repo_url }} dest=/tmp/Hubot-MSGroupChatAdapterService
 
-  - name: Create remote directory
-    action: win_file path=C:\Hubot-MSGroupChatAdapterService state=directory
-
-  - name: Copy file from local to remote
+  - name: Copy zip file from loca
     action: win_copy src=/tmp/Hubot-MSGroupChatAdapterService/Hubot-MSGroupChatAdapterService.zip dest=c:\Windows\Temp
 
   - name: Unzip file
     action: win_unzip src=c:\Windows\Temp\Hubot-MSGroupChatAdapterService.zip dest=C:\Hubot-MSGroupChatAdapterService creates=C:\Hubot-MSGroupChatAdapterService
 
   - name: Install service
-    action: win_nssm name=Hubot_MSGroupChatAdapterService application="C:\Hubot-MSGroupChatAdapterService\Hubot-MSGroupChatAdapterService.exe" state=started
+    script: install-hubot-msgroupchatadapter.ps1
+#    register: out
 
-#action: win_nssm application="C:\Hubot-MSGroupChatAdapterService\Hubot-MSGroupChatAdapterService.exe" name=Hubot_MSGroupChatAdapterService start_mode=auto state=started
+#  - debug: var=out.stdout_lines
