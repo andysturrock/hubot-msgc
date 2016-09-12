@@ -10,7 +10,7 @@ namespace Hubot_MSGroupChatAdapterService
         /// </summary>
         static void Main()
         {
-            ServiceBase[] servicesToRun = new ServiceBase[]
+            var servicesToRun = new ServiceBase[]
             {
                 new HubotMsGroupChatAdapterService()
             };
